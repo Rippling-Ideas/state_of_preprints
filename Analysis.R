@@ -1,5 +1,5 @@
 # Load libraries and set theme ----
-pacman::p_load("tidyverse", "colorspace", "lubridate", "patchwork", "reshape2", "scales", "ggrepel", "ggfocus", "directlabels", "viridis")
+pacman::p_load("tidyverse", "colorspace", "lubridate", "patchwork", "reshape2", "scales", "ggrepel", "ggfocus", "directlabels", "viridis", "ggalluvial")
 
 report::cite_packages() # Create a citation for all used packages
 devtools::session_info()
@@ -18,7 +18,7 @@ theme_set(theme_minimal() +
                   axis.title.y = element_text(margin = margin(0, 20, 0, 0)),
                   legend.key.size = unit(0.5, "cm"),
                   legend.text = element_text(size = 10),
-                  panel.border = element_rect(color = "#E0E0E0", size = 0.5, fill = NA),
+                  panel.border = element_rect(color = "#E0E0E0", linewidth = 0.5, fill = NA),
                   strip.background = element_rect(fill = "#FAFAFA", color = "#E0E0E0"),
                   panel.spacing = unit(2, "lines")))
 
@@ -60,20 +60,16 @@ palette <- function(color) {
 
 biorxiv_preprints_basic_20131101_20251231 <- read_csv("output/biorxiv_preprints_basic_20131101_20251231.csv") 
 biorxiv_preprints_basic_reviews_20131101_20251231 <- read_csv("output/biorxiv_preprints_basic_reviews_20131101_20251231.csv") 
-biorxiv_preprints_enhanced_openalex_data_20131101_20251231 <- read_csv("output/biorxiv_enhanced_openalex_20131101_20251231.csv")
 biorxiv_published_20131101_20251231 <- read_csv("output/biorxiv_13_25_published.csv")
-medrxiv_published_13_25 <- read_csv("output/medrxiv_published_13_25.csv")
-
-biorxiv_usage_data_20131101_20251231 <- read_csv("output/biorxiv_usage_data_20131101_20251231")
-biorxiv_review_data_20131101_202512311 <- read_csv("output/biorxiv_review_data_20131101_20251231.csv")
-biorxiv_preprints_enhanced_review_data_20131101_20251231 <- read_csv("output/biorxiv_preprints_enhanced_review_data_20131101_20251231.csv")
 biorxiv_openalex_20131101_20251231 <- read_csv("output/biorxiv_openalex_20131101_20251231.csv")
+biorxiv_usage_data_20131101_20251231 <- read_csv("output/biorxiv_usage_data_20131101_20251231")
+
+medrxiv_data_2019_2025 <- read_csv("output/medrxiv_data_19-25.csv")
+medrxiv_published_13_25 <- read_csv("output/medrxiv_published_13_25.csv")
+medRxiv_evaluations_13_25 <- 
+
 
 epmc_preprints <- read_csv("output/epmc_2013_2025_complete.csv")
-
-biorxiv_usage_data_clean <- read_csv("output/biorxiv_usage_data_clean.csv")
-biorxiv_usage_data_20131101_20251231 <- read_csv("output/biorxiv_usage_data_20131101_20251231")
-medrxiv_data_2019_2025 <- read_csv("output/medrxiv_data_19-25.csv")
 
 summary_data <- read_csv("data/biorxiv_category_summary_data.csv") 
 summary_data_medrxiv <- read_csv("data/medrxiv_category_summary_data.csv") 
@@ -81,6 +77,8 @@ biorxiv_usage_summary <- read_csv("data/biorxiv_usage.csv")
 medrxiv_usage_summary <- read_csv("data/medrxiv_usage.csv")
 openrxiv_usage_summary <- read_csv("data/openrxiv_usage.csv")
 openrxiv_summary <- read_csv("data/openrxiv_summary.csv")
+
+
 
 
 summary_data %>% 
@@ -352,9 +350,34 @@ epmc_preprints %>%
     geom_text(aes(label = proportion), hjust = 0.5, nudge_y = -2) +
     scale_fill_manual(values = qualitative_hcl(n = 7, palette = "Set2")) +
     theme(legend.position = "none") #+
-  ggsave("figs/euPMC_preprints_evaluated_biorxiv.png", height = 4, width = 4)    
+  ggsave("figs/euPMC_preprints_evaluated_biorxiv.png", height = 4, width = 4)
 
+
+epmc_preprints %>% 
+  mutate(preprint_server = case_when(
+    preprint_server == "bioRxiv" ~ "bioRxiv",
+    preprint_server == "medRxiv" ~ "medRxiv",)) %>% 
+    group_by(preprint_server) %>% 
+    count(evaluated)  %>% 
+    na.omit() %>% 
+    mutate(proportion = (n/sum(n)) * 100) %>% 
+  ggplot(aes(x = preprint_server, y = proportion, fill = evaluated)) +
+  geom_col(alpha=0.8, position = "dodge") +
+  geom_text(aes(label = paste0(round(proportion, 1), "%")), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 3) +
+  labs(title = "openRxiv preprints evaluated",
+       x = "Preprint Server", 
+       y = "Percentage (preprints evaluated)", 
+       subtitle = "Europe PMC data; excludes journal-organised\n peer review") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45)) +
+  scale_fill_manual(values = qualitative_hcl(n = 7, palette = "Set2")) +
+  theme(legend.position = "right") #+
+  ggsave("figs/euPMC_preprints_evaluated_openrxiv.png", height = 4, width = 4)  
   
+    
 epmc_preprints %>% 
   mutate(preprint_server = case_when(
       preprint_server == "bioRxiv" ~ "bioRxiv",
@@ -373,7 +396,7 @@ epmc_preprints %>%
             position = position_dodge(width = 0.9), 
             vjust = -0.5, 
             size = 3) +
-  labs(title = "bioRxiv preprints evaluated",
+  labs(title = "Preprints evaluated",
        x = "Preprint Server", 
        y = "Percentage (preprints evaluated)", 
        subtitle = "Europe PMC data; excludes journal-organised peer review") +
@@ -546,15 +569,15 @@ biorxiv_preprints_basic_20131101_20251231 %>%
   
 ### Versioning  -----
 biorxiv_preprints_basic_20131101_20251231 %>% 
-    count(n_versions)  %>% 
     mutate(n_versions = case_when(
       n_versions == 1 ~ "1",
       n_versions == 2 ~ "2", 
       n_versions == 3 ~ "3",
       n_versions == 4 ~ "4",
       n_versions > 4 ~ "5+")) %>% 
+    count(n_versions)  %>% 
     na.omit() %>% 
-    mutate(proportion = (n/sum(n)) * 100) %>% 
+    mutate(proportion = (n/sum(n)) * 100) %>% #View()
     ggplot(aes(x = n_versions, y = proportion, fill = n_versions)) +
     geom_col(position = position_dodge()) +
     theme_minimal() +
@@ -639,8 +662,7 @@ ggplot(usage_plot, aes(x = year_num, y = afp_views)) +
         title = "Total Cumulative bioRxiv Usage",
         subtitle = "Data represents the status at the end of each year",
         x = "Year", 
-        y = "Total Cumulative Views/Downloads"
-      ) +
+        y = "Total Cumulative Views/Downloads") +
       theme_minimal() +
       theme(legend.position = "none") #+
    ggsave("figs/biorxiv_usage_summary_cumulative.png", height = 4, width = 8)     
@@ -801,7 +823,22 @@ biorxiv_preprints_basic_reviews_20131101_20251231 %>%
     theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) #+
   ggsave("figs/biorxiv_evaluated_posting_year.png", height = 4, width = 6)    
 
-  
+### reviewed preprints by year of review -----
+biorxiv_preprints_basic_reviews_20131101_20251231 %>%
+    mutate(review_year = format(as.Date(biorxiv_preprints_basic_reviews_20131101_20251231$Review_date, format="%Y-%m-%d"),"%Y")) %>% 
+    count(review_year)  %>% 
+    na.omit() %>% #View()
+    ggplot(aes(x = review_year, y = n, fill = review_year)) +
+    geom_col(position = position_dodge()) +
+    theme_minimal() +
+    labs(title = "Preprints evaluated",
+         x = "Year of preprint review", 
+         y = "Number of preprints reviewed",
+         subtitle = "bioRxiv data") +
+    theme(legend.position = "none") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) #+
+  ggsave("figs/biorxiv_evaluated_review_year.png", height = 4, width = 6)    
+   
 ## bioRxiv published data ----
   
 ### location of published preprints ----
@@ -817,7 +854,7 @@ biorxiv_published_20131101_20251231 %>%
          y = "Number of preprints published",
          subtitle = "venues with > 1000 published preprints; bioRxiv data") +
     theme(legend.position = "none") +
-    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) #+
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
   ggsave("figs/biorxiv_published_journal.png", height = 4, width = 8)  
   
 ### published preprints by year of posting -----
@@ -893,6 +930,56 @@ biorxiv_published_20131101_20251231 %>%
   theme(legend.position = "none") #+
   ggsave("figs/biorxiv_published_delay_bin.png", height = 4, width = 4)  
 
+### Individual providers and where the preprints publish ----
+biorxiv_basic_reviews_temp <- biorxiv_basic_reviews %>% rename(preprint_doi = doi) %>% 
+    select(preprint_doi, provider, Review_date)
+  
+biorxiv_published_20131101_20251231_temp <- biorxiv_published_20131101_20251231 %>% 
+    mutate(preprint_doi = str_remove_all(preprint_doi, "10.1101/")) %>% 
+    select(preprint_doi, published_journal, published_date)
+  
+evals_pub_biorxiv <- left_join(biorxiv_basic_reviews_temp, biorxiv_published_20131101_20251231_temp, by = "preprint_doi")
+  
+evals_pub_biorxiv$review_year <- format(as.Date(evals_pub_biorxiv$Review_date, format="%Y-%m-%d"),"%Y")
+
+
+evals_pub_biorxiv %>% 
+#    filter(grepl("PCI", provider)) %>% 
+    filter(!is.na(provider), !is.na(published_journal)) %>% 
+    filter(provider == "preLights") %>% 
+    count(provider, published_journal) %>%
+    # Filter for top journals per evaluator to keep it clean
+    group_by(provider) %>%
+    slice_max(n, n = 10) %>% #View()
+    ggplot(aes(y = n, axis1 = provider, axis2 = published_journal)) +
+    geom_alluvium(aes(fill = published_journal), width = 1/12) +
+    geom_stratum(width = 1/12, fill = "grey80", color = "grey") +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+    scale_x_discrete(limits = c("Evaluator", "Journal"), expand = expansion(mult = c(0.2, 0.4))) +
+    labs(title = "Journal Destinations by Evaluator (top 10 journals)",
+         y = "Number of Preprints") +
+    theme_minimal() +
+    theme(legend.position = "none") #+
+  ggsave("figs/biorxiv_evaluator_journal_prelights.png", height = 4, width = 5)
+  
+
+evals_pub_biorxiv %>% 
+    filter(!is.na(provider), !is.na(published_journal)) %>% 
+    group_by(review_year) %>% 
+    count(review_year) %>% 
+    ggplot(aes(x = review_year, y = n, fill = review_year, group = review_year)) +
+    geom_col(alpha=0.8) +
+    labs(title = "bioRxiv preprint evaluations per year",
+         x = "Review year", 
+         y = "Count (preprint evaluations)", 
+         fill = 'Preprint server',
+         subtitle = "bioRxiv data") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+    #   scale_fill_manual(values = qualitative_hcl(n = 7, palette = "Set2")) +
+    theme(legend.position = "none") +
+    guides(fill = guide_legend(nrow = 1)) #+
+  ggsave("figs/biorxiv_preprint_evaluations_year.png", height = 4, width = 6)   
   
 ## medRxiv data -----
   
@@ -1762,3 +1849,141 @@ p5 + p6 + p7 + p8 + plot_layout(design = layout) +
   plot_annotation(tag_levels = "A") +
   ggsave("./figs/Figure_2_FEBS.png", width = 14, height = 14)
 
+
+
+
+
+# TEST/Play -----
+
+# Evaluators and journal publications
+
+biorxiv_basic_reviews_temp <- biorxiv_basic_reviews %>% rename(preprint_doi = doi) %>% 
+  select(preprint_doi, provider, Review_date)
+
+biorxiv_published_20131101_20251231_temp <- biorxiv_published_20131101_20251231 %>% 
+  mutate(preprint_doi = str_remove_all(preprint_doi, "10.1101/")) %>% 
+  select(preprint_doi, published_journal, published_date)
+
+evals_pub_biorxiv <- left_join(biorxiv_basic_reviews_temp, biorxiv_published_20131101_20251231_temp, by = "preprint_doi")
+
+library(networkD3)
+
+target_providers_sankey <- c("preLights")
+
+
+
+
+# 1. Prepare the links (Source -> Target with a count)
+links <- evals_pub_biorxiv %>%
+  filter(!is.na(provider), !is.na(published_journal)) %>%
+  filter(provider %in% target_providers_sankey) %>%
+  count(provider, published_journal) %>%
+  rename(source = provider, target = published_journal, value = n)
+
+# 2. Create a unique nodes list
+# networkD3 requires 0-indexed IDs for nodes
+nodes <- data.frame(
+  name = unique(c(links$source, links$target))
+)
+
+# 3. Convert names in links to the 0-indexed IDs from the nodes table
+links$IDsource <- match(links$source, nodes$name) - 1
+links$IDtarget <- match(links$target, nodes$name) - 1
+
+# 4. Draw the Sankey Diagram
+sankeyNetwork(Links = links, Nodes = nodes,
+              Source = "IDsource", Target = "IDtarget",
+              Value = "value", NodeID = "name",
+              fontSize = 12, nodeWidth = 30,
+              sinksRight = FALSE) # Keeps journals on the right
+
+
+
+
+
+
+
+
+
+
+
+
+
+# plot sankey type diagrams for multiple or single provider
+
+library(ggalluvial)
+
+target_providers <- c("Review Commons", "eLife", "preLights", "PREreview", "Arcadia Science")
+
+evals_pub_biorxiv %>% 
+  filter(!is.na(provider), !is.na(published_journal)) %>% 
+  filter(provider %in% target_providers) %>% 
+  count(provider, published_journal) %>%
+  # Filter for top journals per evaluator to keep it clean
+  group_by(provider) %>%
+  slice_max(n, n = 5) %>% #View()
+  ggplot(aes(y = n, axis1 = provider, axis2 = published_journal)) +
+  geom_alluvium(aes(fill = published_journal), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "grey80", color = "grey") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+  scale_x_discrete(limits = c("Evaluator", "Journal"), expand = c(.05, .05)) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  facet_wrap(~provider, scales = "free_y") +
+  theme(legend.position = "none") +
+  labs(title = "Journal Destinations by Evaluator",
+       y = "Number of Preprints") #+
+ggsave("figs/biorxiv_evaluator_journal_facet.png", height = 8, width = 8)
+
+# Individual providers, best route
+evals_pub_biorxiv %>% 
+#  filter(grepl("PCI", provider)) %>% 
+  filter(!is.na(provider), !is.na(published_journal)) %>% 
+  filter(provider == "eLife") %>% 
+  count(provider, published_journal) %>%
+  # Filter for top journals per evaluator to keep it clean
+  group_by(provider) %>%
+  slice_max(n, n = 10) %>% #View()
+  ggplot(aes(y = n, axis1 = provider, axis2 = published_journal)) +
+  geom_alluvium(aes(fill = published_journal), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "grey80", color = "grey") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+  scale_x_discrete(limits = c("Evaluator", "Journal"), expand = expansion(mult = c(0.2, 0.4))) +
+  labs(title = "Journal Destinations by Evaluator (top 10 journals)",
+       y = "Number of Preprints") +
+  theme_minimal() +
+  theme(legend.position = "none") #+
+ggsave("figs/biorxiv_evaluator_journal_pci.png", height = 4, width = 5)
+
+# Check PCI venues and eLife venues (potential CoI, worth investigating more in-depth)
+evals_pub_biorxiv %>% 
+    mutate(provider = case_when(str_detect(provider, "PCI") ~ "PCI")) %>% 
+    filter(!is.na(provider), !is.na(published_journal)) %>% 
+    mutate(published_journal = case_when(
+    published_journal == "Peer Community Journal" ~ "Peer Community Journal",
+   TRUE ~ "other")) %>%
+    count(published_journal) %>% 
+    mutate(proportion = (n / sum(n)) * 100) %>% View()
+
+evals_pub_biorxiv %>% 
+  filter(provider == "eLife") %>% 
+  filter(!is.na(provider), !is.na(published_journal)) %>% 
+  mutate(published_journal = case_when(
+    published_journal == "eLife" ~ "eLife",
+    TRUE ~ "other")) %>%
+  count(published_journal) %>% 
+  mutate(proportion = (n / sum(n)) * 100) %>% View()
+
+evals_pub_biorxiv %>% 
+  filter(provider == "Review Commons") %>% 
+  filter(!is.na(provider), !is.na(published_journal)) %>% 
+  mutate(published_journal = case_when(published_journal %in% c("EMBO reports", 
+                             "EMBO Molecular Medicine", 
+                             "The EMBO Journal", 
+                             "Molecular Systems Biology") ~ "EMBO", 
+    TRUE ~ "other")) %>% 
+  count(published_journal) %>% 
+  mutate(proportion = (n / sum(n)) * 100) %>% View()
+
+evals_pub_biorxiv %>% 
+  count(provider) %>% View()
