@@ -63,11 +63,13 @@ biorxiv_preprints_basic_reviews_20131101_20251231 <- read_csv("output/biorxiv_pr
 biorxiv_published_20131101_20251231 <- read_csv("output/biorxiv_13_25_published.csv")
 biorxiv_openalex_20131101_20251231 <- read_csv("output/biorxiv_openalex_20131101_20251231.csv")
 biorxiv_usage_data_20131101_20251231 <- read_csv("output/biorxiv_usage_data_20131101_20251231")
+biorxiv_preprints_basic_altmetric_20131101_20251231 <- read_csv("output/biorxiv_preprints_basic_altmetric_20131101_20251231.csv")
+evals_pub_altmetric <- read_csv("output/biorxiv_evaluations_publication_altmetrics.csv")
 
 medrxiv_data_2019_2025 <- read_csv("output/medrxiv_data_19-25.csv")
 medrxiv_published_13_25 <- read_csv("output/medrxiv_published_13_25.csv")
-medRxiv_evaluations_13_25 <- 
-
+medRxiv_evaluations_13_25 <- # missing in API data
+  
 
 epmc_preprints <- read_csv("output/epmc_2013_2025_complete.csv")
 
@@ -780,7 +782,10 @@ biorxiv_preprints_basic_reviews_20131101_20251231 %>%
 ggsave("figs/biorxiv_review_categories.png", height = 4, width = 6)  
 
 ### Time between posting preprint and review ----
+selected_providers <- c("PCI", "Review Commons", "eLife", "PREreview", "ASAPbio crowd review", "Arcadia Science", "EMBO Press", "preLights", "Rapid Reviews Infectious Diseases", "preprint_club")
+
 biorxiv_preprints_basic_reviews_20131101_20251231 %>% 
+#  filter(provider %in% selected_providers) %>%
   mutate(provider = if_else(str_detect(provider, "PCI"), "PCI", provider)) %>% 
   mutate(delay_in_days = as.numeric(ymd(Review_date) -  ymd(date))) %>% #View()
   mutate(pub_bracket = cut(as.numeric(delay_in_days), 
@@ -788,8 +793,8 @@ biorxiv_preprints_basic_reviews_20131101_20251231 %>%
                            labels=seq(0, 350, by = 10))) %>% 
   group_by(provider) %>% 
   count(pub_bracket) %>%  
-  mutate(prop = n*100 / sum(n)) %>%
-  filter(prop > 8) %>% # to make data more readable
+  mutate(prop = n*100 / sum(n)) %>% 
+#  filter(prop > 8) %>% # to make data more readable
   filter(!is.na(pub_bracket)) %>%
   filter(!is.na(provider)) %>% 
   ggplot(aes(x = pub_bracket, y = prop, fill=provider, color=provider)) +
@@ -805,6 +810,53 @@ biorxiv_preprints_basic_reviews_20131101_20251231 %>%
         legend.position = "bottom",
         legend.text = element_text(size = 8)) #+
   ggsave("figs/biorxiv_review_delay_posting_to_review.png", height = 4, width = 8)  
+ 
+   
+selected_providers <- c("PCI", "Review Commons", "eLife", "PREreview", "ASAPbio crowd review", "Arcadia Science", "EMBO Press", "preLights", "Rapid Reviews Infectious Diseases", "preprint_club", "Oxford Immuno CV19")
+  
+biorxiv_preprints_basic_reviews_20131101_20251231 %>%
+    mutate(provider = if_else(str_detect(provider, "PCI"), "PCI", provider)) %>%
+    mutate(provider = if_else(str_detect(provider, "PREreview"), "PREreview", provider)) %>%
+    filter(provider %in% selected_providers) %>%
+    mutate(
+      delay_in_days = as.numeric(ymd(Review_date) - ymd(date)),
+      pub_bracket = cut(delay_in_days, 
+                        breaks = seq(0, 360, by = 30), 
+                        labels = seq(0, 330, by = 30),
+                        include.lowest = TRUE)) %>%
+  filter(!is.na(pub_bracket), !is.na(provider)) %>%
+    group_by(provider, pub_bracket) %>%
+    summarise(n = n(), .groups = "drop_last") %>%
+    mutate(prop = n * 100 / sum(n)) %>%
+    ungroup() %>%
+    ggplot(aes(x = pub_bracket, y = prop, fill = provider)) +
+    geom_col(alpha = 0.8, show.legend = FALSE) + 
+    facet_wrap(~provider, ncol = 6) + 
+    labs(
+      x = "Time from preprint posting to evaluation (days)",
+      y = "% of preprints within provider",
+      title = "Delay between preprint posting and evaluation",
+      subtitle = "Aggregated into 30-day intervals for clarity; bioRxiv data"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      strip.background = element_rect(fill = "grey90", color = NA),
+      strip.text = element_text(face = "bold")) #+
+  ggsave("figs/biorxiv_review_delay_posting_to_review_facet.png", height = 6, width = 12)  
+
+
+# Calculate average delays
+biorxiv_preprints_basic_reviews_20131101_20251231 %>%
+  mutate(provider = if_else(str_detect(provider, "PCI"), "PCI", provider)) %>%
+  mutate(provider = if_else(str_detect(provider, "PREreview"), "PREreview", provider)) %>%
+#  filter(provider %in% selected_providers) %>%
+  mutate(delay_in_days = as.numeric(ymd(Review_date) - ymd(date))) %>%
+  filter(!is.na(delay_in_days), !is.na(provider), delay_in_days >= 0) %>% 
+  group_by(provider) %>%
+  summarise(mean_delay = mean(delay_in_days), .groups = "drop") %>% 
+  View()
+
 
 ### reviewed preprints by year of posting -----
 biorxiv_preprints_basic_reviews_20131101_20251231 %>%
@@ -839,6 +891,315 @@ biorxiv_preprints_basic_reviews_20131101_20251231 %>%
     theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) #+
   ggsave("figs/biorxiv_evaluated_review_year.png", height = 4, width = 6)    
    
+## bioRxiv altmetric data ----
+
+### news mentions by category ----
+news_mentions_plot <- biorxiv_preprints_basic_altmetric_20131101_20251231 %>%
+    group_by(category) %>%
+    mutate(category = str_to_title(category)) %>% 
+    summarise(total_mentions = sum(news, na.rm = TRUE)) %>%
+    ungroup()
+  
+ggplot(news_mentions_plot, aes(x = fct_reorder(category, total_mentions), y = total_mentions, fill = category)) +
+    geom_col(show.legend = FALSE) +
+    # We flip the coordinates because subject category names are long
+    coord_flip() + 
+    # Format the numbers on the axis with commas
+    scale_y_continuous(labels = label_comma()) +
+    # Use a consistent color palette
+    scale_fill_manual(values = qualitative_hcl(nrow(news_mentions_plot), palette = "Set2")) +
+    labs(
+      title = "Total News Mentions by bioRxiv Category",
+      subtitle = "Aggregated total from individual preprint Altmetric data",
+      x = "Subject Category",
+      y = "Total News Mentions"
+    ) +
+    theme_minimal() +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 9)) #+
+  ggsave("figs/biorxiv_news.png", height = 6, width = 8)    
+
+### news mentions over time ----
+news_time_plot <- biorxiv_preprints_basic_altmetric_20131101_20251231 %>%
+  mutate(category = str_to_title(category),
+    date_obj = as.Date(date), 
+    month = floor_date(date_obj, "month")) %>%
+  group_by(month) %>%
+  summarise(total_news = sum(news, na.rm = TRUE)) %>%
+  filter(!is.na(month)) # Remove any rows with missing dates
+
+ggplot(news_time_plot, aes(x = month, y = total_news)) +
+  geom_line(color = "#2c3e50", linewidth = 0.8) +
+  # Add a trend line (LOESS) to see the overall growth more clearly
+  geom_smooth(method = "loess", color = "#e74c3c", se = FALSE, linetype = "dashed", size = 1) +
+  scale_y_continuous(labels = label_comma()) +
+  # Format x-axis to show every year
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(
+    title = "Growth of News Mentions for bioRxiv Preprints",
+    subtitle = "Monthly sum of news mentions; Red dashed line indicates the general trend",
+    x = "Year",
+    y = "Total News Mentions per Month"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  theme(panel.grid.minor = element_blank()) #+
+ggsave("figs/biorxiv_news_over_time.png", height = 4, width = 6)
+  
+### Score by category  -----
+# Add 1 to the score so that scores of 0 can be plotted on a log scale
+dist_plot_data <- biorxiv_preprints_basic_altmetric_20131101_20251231 %>%
+  filter(!is.na(altmetric_score), !is.na(category)) %>%
+  mutate(category = str_to_title(category),
+         plot_score = altmetric_score + 1) 
+
+ggplot(dist_plot_data, aes(x = fct_reorder(category, altmetric_score, .fun = median), y = plot_score, fill = category)) +
+  # Using a boxplot to show quartiles and outliers
+  geom_boxplot(outlier.alpha = 0.1, outlier.size = 0.5, alpha = 0.7, show.legend = FALSE) +
+  # Flip coordinates for readability of category names
+  coord_flip() +
+  # Use log10 scale to handle the massive range in scores
+  scale_y_log10(
+    breaks = c(1, 10, 100, 1000, 10000),
+    labels = c("0", "10", "100", "1,000", "10,000")
+  ) +
+  scale_fill_manual(values = qualitative_hcl(length(unique(dist_plot_data$category)), palette = "Set2")) +
+  labs(
+    title = "Altmetric Attention Score Distribution by bioRxiv Category",
+    subtitle = "Categories sorted by median score",
+    x = "Subject Category",
+    y = "Altmetric Attention Score (log10)"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_text(size = 9)) #+
+  ggsave("figs/biorxiv_altmetric_dist.png", height = 6, width = 8)    
+
+  
+### policy mentions by category ----
+policy_mentions_plot <- biorxiv_preprints_basic_altmetric_20131101_20251231 %>%
+    group_by(category) %>%
+    mutate(category = str_to_title(category)) %>% 
+    summarise(total_mentions = sum(policy, na.rm = TRUE)) %>%
+    ungroup()
+  
+ggplot(policy_mentions_plot, aes(x = fct_reorder(category, total_mentions), y = total_mentions, fill = category)) +
+    geom_col(show.legend = FALSE) +
+    # We flip the coordinates because subject category names are long
+    coord_flip() + 
+    # Format the numbers on the axis with commas
+    scale_y_continuous(labels = label_comma()) +
+    # Use a consistent color palette
+    scale_fill_manual(values = qualitative_hcl(nrow(news_mentions_plot), palette = "Set2")) +
+    labs(
+      title = "Total Policy Mentions by bioRxiv Category",
+      subtitle = "Aggregated total from individual preprint Altmetric data",
+      x = "Subject Category",
+      y = "Total Policy Mentions"
+    ) +
+    theme_minimal() +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 9)) #+
+  ggsave("figs/biorxiv_policy.png", height = 6, width = 8)   
+  
+### policy mentions over time ----
+policy_time_plot <- biorxiv_preprints_basic_altmetric_20131101_20251231 %>%
+    mutate(category = str_to_title(category),
+           date_obj = as.Date(date), 
+           month = floor_date(date_obj, "month")) %>%
+    group_by(month) %>%
+    summarise(total_policy = sum(policy, na.rm = TRUE)) %>%
+    filter(!is.na(month)) # Remove any rows with missing dates
+  
+ggplot(policy_time_plot, aes(x = month, y = total_policy)) +
+    geom_line(color = "#2c3e50", linewidth = 0.8) +
+    # Add a trend line (LOESS) to see the overall growth more clearly
+    geom_smooth(method = "loess", color = "#e74c3c", se = FALSE, linetype = "dashed", size = 1) +
+    scale_y_continuous(labels = label_comma()) +
+    # Format x-axis to show every year
+    scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+    labs(
+      title = "Growth of Policy Mentions for bioRxiv Preprints",
+      subtitle = "Monthly sum of policy mentions; Red dashed line indicates the general trend",
+      x = "Year",
+      y = "Total Policy Mentions per Month (log10)"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+    theme(panel.grid.minor = element_blank()) #+
+  ggsave("figs/biorxiv_policy_over_time.png", height = 4, width = 6)  
+  
+### podcast mentions by category ----
+podcast_mentions_plot <- biorxiv_preprints_basic_altmetric_20131101_20251231 %>%
+    group_by(category) %>%
+    mutate(category = str_to_title(category)) %>% 
+    summarise(total_mentions = sum(podcast, na.rm = TRUE)) %>%
+    ungroup()
+  
+ggplot(podcast_mentions_plot, aes(x = fct_reorder(category, total_mentions), y = total_mentions, fill = category)) +
+    geom_col(show.legend = FALSE) +
+    # We flip the coordinates because subject category names are long
+    coord_flip() + 
+    # Format the numbers on the axis with commas
+    scale_y_continuous(labels = label_comma()) +
+    # Use a consistent color palette
+    scale_fill_manual(values = qualitative_hcl(nrow(news_mentions_plot), palette = "Set2")) +
+    labs(
+      title = "Total Podcast Mentions by bioRxiv Category",
+      subtitle = "Aggregated total from individual preprint Altmetric data",
+      x = "Subject Category",
+      y = "Total Podcast Mentions"
+    ) +
+    theme_minimal() +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 9)) #+
+  ggsave("figs/biorxiv_podcasts.png", height = 6, width = 8)  
+  
+### youtube mentions by category ----
+youtube_mentions_plot <- biorxiv_preprints_basic_altmetric_20131101_20251231 %>%
+    group_by(category) %>%
+    mutate(category = str_to_title(category)) %>% 
+    summarise(total_mentions = sum(youtube, na.rm = TRUE)) %>%
+    ungroup()
+  
+ggplot(youtube_mentions_plot, aes(x = fct_reorder(category, total_mentions), y = total_mentions, fill = category)) +
+    geom_col(show.legend = FALSE) +
+    # We flip the coordinates because subject category names are long
+    coord_flip() + 
+    # Format the numbers on the axis with commas
+    scale_y_continuous(labels = label_comma()) +
+    # Use a consistent color palette
+    scale_fill_manual(values = qualitative_hcl(nrow(news_mentions_plot), palette = "Set2")) +
+    labs(
+      title = "Total YouTube Mentions by bioRxiv Category",
+      subtitle = "Aggregated total from individual preprint Altmetric data",
+      x = "Subject Category",
+      y = "Total YouTube Mentions"
+    ) +
+    theme_minimal() +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 9)) #+
+  ggsave("figs/biorxiv_youtube.png", height = 6, width = 8)    
+
+### youtube mentions by category ----
+blog_mentions_plot <- biorxiv_preprints_basic_altmetric_20131101_20251231 %>%
+    group_by(category) %>%
+    mutate(category = str_to_title(category)) %>% 
+    summarise(total_mentions = sum(blogs, na.rm = TRUE)) %>%
+    ungroup()
+  
+ggplot(blog_mentions_plot, aes(x = fct_reorder(category, total_mentions), y = total_mentions, fill = category)) +
+    geom_col(show.legend = FALSE) +
+    # We flip the coordinates because subject category names are long
+    coord_flip() + 
+    # Format the numbers on the axis with commas
+    scale_y_continuous(labels = label_comma()) +
+    # Use a consistent color palette
+    scale_fill_manual(values = qualitative_hcl(nrow(news_mentions_plot), palette = "Set2")) +
+    labs(
+      title = "Total Blog Mentions by bioRxiv Category",
+      subtitle = "Aggregated total from individual preprint Altmetric data",
+      x = "Subject Category",
+      y = "Total Blog Mentions"
+    ) +
+    theme_minimal() +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 9)) #+
+  ggsave("figs/biorxiv_blogs.png", height = 6, width = 8)    
+  
+### Evaluations and altmetric score ----
+evaluator_plot_data <- evals_pub_altmetric %>%
+  filter(!is.na(provider)) %>% 
+  mutate(provider = if_else(str_detect(provider, "PREreview"), "PREreview", provider)) %>%
+  mutate(provider = if_else(str_detect(provider, "PCI"), "PCI", provider)) %>%
+  group_by(provider) %>%
+  summarise(
+    # We calculate the mean to get the "per article" proportion
+    avg_score = mean(altmetric_score, na.rm = TRUE),
+    count = n()
+  ) %>%
+  ungroup()
+  
+ggplot(evaluator_plot_data, aes(x = fct_reorder(provider, avg_score), y = avg_score, fill = provider)) +
+  geom_col(show.legend = FALSE, alpha = 0.8) +
+  # Adding a text label to show the sample size (n) for context
+  geom_text(aes(label = paste0("n=", count)), 
+            hjust = -0.2, size = 3, color = "grey30") +
+  coord_flip() + 
+  # Expand the y-axis slightly to fit the n= labels
+  scale_y_continuous(labels = label_comma(), expand = expansion(mult = c(0, .15))) +
+  labs(
+    title = "Average Altmetric Attention per Evaluated Preprint",
+    subtitle = "Mean score per article to account for differences in provider volume",
+    x = "Evaluator / Provider",
+    y = "Mean Altmetric Score"
+  ) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank()) #+
+ggsave("figs/biorxiv_evaluator_altmetrics.png", height = 6, width = 8)    
+
+### Publications and altmetric score ----
+publisher_plot_data <- evals_pub_altmetric %>%
+  filter(!is.na(published_journal)) %>% 
+  group_by(published_journal) %>%
+  summarise(
+    # We calculate the mean to get the "per article" proportion
+    avg_score = mean(altmetric_score, na.rm = TRUE),
+    count = n()
+  ) %>%
+  ungroup() %>% 
+  filter(count >= 20) %>% 
+  # OPTIONAL: Slice for top 30 to keep the chart clean
+  slice_max(avg_score, n = 30)
+
+ggplot(publisher_plot_data, aes(x = fct_reorder(published_journal, avg_score), y = avg_score, fill = avg_score)) +
+  geom_col(show.legend = FALSE, alpha = 0.8) +
+  # Labeling with sample size for transparency
+  geom_text(aes(label = paste0("n=", count)), 
+            hjust = -0.15, size = 3, color = "grey30") +
+  coord_flip() + 
+  # Using viridis for a clean, professional gradient
+  scale_fill_viridis_c(option = "mako", begin = 0.2, end = 0.8) +
+  scale_y_continuous(labels = label_comma(), expand = expansion(mult = c(0, .2))) +
+  labs(
+    title = "Top 30 Journals by Preprint Altmetric Attention",
+    subtitle = "Mean score per article (only journals with n ≥ 20)",
+    x = "Published Journal",
+    y = "Mean Altmetric Score"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_text(size = 9)) #+
+ggsave("figs/biorxiv_published_altmetrics.png", height = 6, width = 8)    
+  
+### Compare evaluated v not altmetric ----
+publisher_comparison <- evals_pub_altmetric %>%
+  filter(!is.na(published_journal)) %>%
+  # Create a flag for whether it was evaluated by a provider (PCI, Review Commons, etc.)
+  mutate(is_evaluated = if_else(!is.na(provider), "Evaluated", "Not Evaluated")) %>%
+  group_by(published_journal, is_evaluated) %>%
+  summarise(
+    avg_score = mean(altmetric_score, na.rm = TRUE),
+    count = n()) %>%
+  filter(count >= 20) %>%
+  group_by(published_journal) %>%
+  # Only keep journals that have BOTH evaluated and non-evaluated preprints
+  filter(n() == 2) 
+
+ggplot(publisher_comparison, aes(x = avg_score, y = published_journal, fill = is_evaluated)) +
+  geom_col(position = "dodge") +
+  labs(title = "Does Evaluation Boost Altmetric Score?",
+       subtitle = "Comparing preprints in the same journal: Evaluated vs. Standard") +
+  theme_minimal()
+  
+    
 ## bioRxiv published data ----
   
 ### location of published preprints ----
@@ -1987,3 +2348,133 @@ evals_pub_biorxiv %>%
 
 evals_pub_biorxiv %>% 
   count(provider) %>% View()
+
+
+
+
+
+# 1. Clean and calculate raw metrics first
+processed_data <- biorxiv_preprints_basic_reviews_20131101_20251231 %>%
+  mutate(provider = if_else(str_detect(provider, "PCI"), "PCI", provider)) %>%
+  mutate(delay_in_days = as.numeric(ymd(Review_date) - ymd(date))) %>%
+  filter(!is.na(delay_in_days), !is.na(provider), delay_in_days >= 0) %>% 
+  group_by(provider) %>%
+  summarise(mean_delay = mean(delay_in_days), .groups = "drop")
+
+# 2. Calculate averages for the lines
+provider_stats <- processed_data %>%
+  group_by(provider) %>%
+  summarise(mean_delay = mean(delay_in_days), .groups = "drop")
+
+# 3. Bin the data and Plot
+processed_data %>%
+  mutate(pub_bracket = floor(delay_in_days / 30) * 30) %>% # Create numeric bins (0, 30, 60...)
+  filter(pub_bracket <= 360) %>%
+  group_by(provider, pub_bracket) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(prop = n * 100 / sum(n)) %>%
+  ungroup() %>%
+  
+  ggplot(aes(x = pub_bracket, y = prop)) +
+  # Use geom_col with a numeric x-axis
+  geom_col(aes(fill = provider), alpha = 0.7, width = 28, show.legend = FALSE) + 
+  # Add average line (now the units match: days on days)
+  geom_vline(data = provider_stats, aes(xintercept = mean_delay), 
+             color = "red", linetype = "dashed", size = 0.8) +
+  # Add label for the average
+  geom_text(data = provider_stats, 
+            aes(x = mean_delay, y = Inf, label = paste0("Avg: ", round(mean_delay, 0), "d")),
+            vjust = 2, hjust = -0.2, size = 3, color = "red") +
+  facet_wrap(~provider) +
+  scale_x_continuous(breaks = seq(0, 360, by = 60)) +
+  labs(
+    x = "Days from posting to evaluation",
+    y = "% of preprints",
+    title = "Evaluation Delay by Provider",
+    subtitle = "Bars = 30-day bins | Red line = Mean average"
+  ) +
+  theme_minimal()
+
+
+# Stats
+biorxiv_preprints_basic_reviews_20131101_20251231 %>% 
+  mutate(provider = if_else(str_detect(provider, "PCI"), "PCI", provider)) %>%
+  mutate(delay_in_days = as.numeric(ymd(Review_date) - ymd(date))) %>%
+  filter(!is.na(delay_in_days), !is.na(provider), delay_in_days >= 0) %>% 
+  summarise(mean_delay = mean(delay_in_days), .groups = "drop")
+
+biorxiv_published_20131101_20251231 %>% 
+  mutate(delay_in_days = as.numeric(ymd(published_date) - ymd(preprint_date))) %>% 
+  filter(!is.na(delay_in_days), delay_in_days >= 0) %>% 
+  summarise(mean_delay = mean(delay_in_days), .groups = "drop")
+
+
+biorxiv_published_20131101_20251231 %>% 
+  filter(published_journal == "Science" | published_journal == "Nature" | published_journal == "Cell") %>% 
+  mutate(delay_in_days = as.numeric(ymd(published_date) - ymd(preprint_date))) %>%
+  filter(!is.na(delay_in_days), delay_in_days >= 0) %>% 
+  group_by(published_journal) %>% 
+  summarise(mean_delay = mean(delay_in_days), .groups = "drop")
+
+
+
+
+biorxiv_published_20131101_20251231_t <- biorxiv_published_20131101_20251231 %>% 
+  mutate(doi = str_remove_all(preprint_doi, "10.1101/")) %>% 
+  select(preprint_doi, preprint_date, published_date, published_journal)
+
+test <- left_join(biorxiv_published_20131101_20251231_temp, biorxiv_basic_reviews_temp, by = "preprint_doi")
+
+
+test %>% 
+  mutate(provider = if_else(str_detect(provider, "PCI"), "PCI", provider)) %>%
+  mutate(delay_in_days = as.numeric(ymd(published_date) - ymd(Review_date))) %>% 
+  filter(provider == "eLife") %>% 
+  filter(!is.na(delay_in_days), delay_in_days >= 0) %>% 
+  summarise(mean_delay = mean(delay_in_days), .groups = "drop") 
+
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+# 1. Create a clean comparison dataset
+eval_comparison_data <- evals_pub_altmetric %>%
+  # Define the groups: Specific Provider vs. None
+  mutate(group = case_when(
+    is.na(provider) ~ "Not Evaluated",
+    str_detect(provider, "PCI") ~ "PCI (All)",
+    str_detect(provider, "Review Commons") ~ "Review Commons",
+    str_detect(provider, "eLife") ~ "eLife",
+    str_detect(provider, "PREreview") ~ "PREreview",
+    TRUE ~ "Other Evaluators"
+  )) %>%
+  group_by(group) %>%
+  summarise(
+    avg_score = mean(altmetric_score, na.rm = TRUE),
+    count = n(),
+    se = sd(altmetric_score, na.rm = TRUE) / sqrt(n()) # Standard Error for error bars
+  ) %>%
+  ungroup()
+
+# 2. Extract the baseline (Not Evaluated) value for a reference line
+baseline_score <- eval_comparison_data %>% 
+  filter(group == "Not Evaluated") %>% 
+  pull(avg_score)
+
+# 3. Plot the comparison
+ggplot(eval_comparison_data, aes(x = fct_reorder(group, avg_score), y = avg_score, fill = (group == "Not Evaluated"))) +
+  geom_col(alpha = 0.8, show.legend = FALSE) +
+  # Add a horizontal dashed line for the "Not Evaluated" baseline
+  geom_hline(yintercept = baseline_score, linetype = "dashed", color = "red", size = 1) +
+  annotate("text", x = 1.5, y = baseline_score + 2, label = "Baseline (No Evaluation)", color = "red") +
+  # Add error bars to show how reliable the average is
+  geom_errorbar(aes(ymin = avg_score - se, ymax = avg_score + se), width = 0.2, color = "grey40") +
+  coord_flip() +
+  scale_fill_manual(values = c("TRUE" = "grey70", "FALSE" = "#3498db")) +
+  labs(
+    title = "Does Evaluation Influence Altmetric Attention?",
+    subtitle = "Average Score by Provider vs. No Evaluation (Red Line)",
+    x = "Evaluation Status / Provider",
+    y = "Mean Altmetric Attention Score (±SE)"
+  ) +
+  theme_minimal()  
